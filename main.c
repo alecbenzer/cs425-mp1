@@ -8,6 +8,11 @@ int num_processes = 4;
 int num_snapshots = 5;
 int*** channels;
 
+// Returns a random int in {0,...,n-1}
+int randn(int n) {
+  return rand() * n / RAND_MAX;
+}
+
 void process_flags(int argc, char** argv) {
   while (1) {
     static struct option long_opts[] = {
