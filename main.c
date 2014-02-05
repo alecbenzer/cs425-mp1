@@ -1,17 +1,34 @@
 #include <getopt.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 int num_processes = 4;
 int num_snapshots = 5;
+int seed = 100;
 int*** channels;
+
+typedef struct {
+  int id;
+  int money;
+} process_state_t;
 
 // Returns a random int in {0,...,n-1}
 int randn(int n) {
-  return rand() * n / RAND_MAX;
+  return (int)(((double)rand()) / RAND_MAX * n);
+}
+
+// Returns a random process id, excluding the passed in id
+int random_process(int id) {
+  int result = randn(num_processes - 1);
+  if (result == id) {
+    result = num_processes - 1;
+  }
+  return result;
 }
 
 void process_flags(int argc, char** argv) {
@@ -37,12 +54,39 @@ void process_flags(int argc, char** argv) {
         num_snapshots = atoi(optarg);
         break;
       case 'r':
-        srand(atoi(optarg));
+        seed = atoi(optarg);
+        break;
     }
   }
 }
 
+void handle_message(process_state_t* state, int fd) {
+  char type;
+  if (read(fd, &type, 1) != 1) {
+    perror("read error");
+    return;
+  }
+  unsigned char amt;
+  switch (type) {
+    case 0x1:
+      read(fd, &amt, sizeof(amt));
+      state->money += amt;
+      break;
+    default:
+      fprintf(stderr, "Undefined message type\n");
+  }
+}
+
+void send_message(process_state_t* state, int to) {
+  unsigned char amt = randn(256);  // random amount
+  char msg[] = {0x1, amt};
+  state->money -= amt;
+  write(channels[state->id][to][0], msg, sizeof(msg));
+}
+
 void process(int id) {
+  srand(seed + id);  // so that each process generates unique random numbers
+
   // leave open only the channels relevant to this process
   int i, j;
   for (i = 0; i < num_processes; ++i) {
@@ -67,28 +111,36 @@ void process(int id) {
 
   // we will send messages out on channels[id][*][0] and receive messages on
   // channels[*][id][1]
+  
+  process_state_t state;
+  state.id = id;
+  state.money = 100;  // everyone starts with 100 money
 
-  // send a message to each process
+  // construct a poll set for reading
+  struct pollfd* fds = malloc(sizeof(*fds) * num_processes);
   for (i = 0; i < num_processes; ++i) {
     if (i == id) {
-      continue;
+      fds[i].fd = -1;
+    } else {
+      fds[i].fd = channels[i][id][1];
+      fds[i].events = POLLIN;
     }
-    char* msg;
-    int size = asprintf(&msg, "Hello from process %d to process %d", id, i);
-
-    write(channels[id][i][0], msg, size);
-
-    free(msg);
   }
 
-  // receive a message from each process
-  for (i = 0; i < num_processes; ++i) {
-    if (i == id) {
-      continue;
+  while (1) {
+    // randomly decide to send or receive a message
+    int choice = randn(5);
+    if (choice) {  // send
+      send_message(&state, random_process(id));
+    } else {  // receive
+      int wait_for = randn(300);  // ms
+      poll(fds, num_processes - 1, wait_for);
+      for (i = 0; i < num_processes - 1; ++i) {
+        if (fds[i].revents & POLLIN) {
+          handle_message(&state, fds[i].fd);
+        }
+      }
     }
-    char buf[1024];
-    int n = read(channels[i][id][1], buf, sizeof(buf));
-    printf("Process %d got message: '%.*s'\n", id, n, buf);
   }
 }
 
@@ -99,6 +151,7 @@ void process(int id) {
  */
 int main(int argc, char** argv) {
   process_flags(argc, argv);
+
 
   int i, j;  // loop indicies
 
@@ -128,11 +181,10 @@ int main(int argc, char** argv) {
       // In the child, close() all the unneeded sockets
       process(i);
       exit(0);
-    } else {
-      // the parent
-      printf("New child: %d\n", pid);
     }
   }
+
+  while (waitpid(-1, NULL, 0));
 
   // TODO: free channels
 

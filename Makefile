@@ -1,6 +1,6 @@
-all: main
+all: bin/main
 
-main: main.c
+bin/main: main.c
 	mkdir -p bin
 	$(CC) -D_GNU_SOURCE -o bin/main main.c
 
