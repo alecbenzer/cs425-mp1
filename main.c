@@ -82,7 +82,7 @@ void process_handle_message(process_t* p, int fd) {
   }
 }
 
-void send_message(process_t* state, int to) {
+void process_send_message(process_t* state, int to) {
   unsigned char amt = randn(256);  // random amount
   char msg[] = {0x1, amt};
   state->money -= amt;
@@ -100,10 +100,10 @@ void process_run(process_t* p) {
         // the channels on the diagonal are useless
         close(channels[i][j][0]);
         close(channels[i][j][1]);
-      } else if (i == id) {
+      } else if (i == p->id) {
         // we care only about the sending end, close the receiving end
         close(channels[i][j][1]);
-      } else if (j == id) {
+      } else if (j == p->id) {
         // we care only about the receiving end, close the sending end
         close(channels[i][j][0]);
       } else {
@@ -120,10 +120,10 @@ void process_run(process_t* p) {
   // construct a poll set for reading
   struct pollfd* fds = malloc(sizeof(*fds) * num_processes);
   for (i = 0; i < num_processes; ++i) {
-    if (i == id) {
+    if (i == p->id) {
       fds[i].fd = -1;
     } else {
-      fds[i].fd = channels[i][id][1];
+      fds[i].fd = channels[i][p->id][1];
       fds[i].events = POLLIN;
     }
   }
@@ -132,7 +132,7 @@ void process_run(process_t* p) {
     // randomly decide to send or receive a message
     int choice = randn(5);
     if (choice) {  // send
-      process_send_message(p, random_process(id));
+      process_send_message(p, random_process(p->id));
     } else {  // receive
       int wait_for = randn(300);  // ms
       poll(fds, num_processes - 1, wait_for);
@@ -142,6 +142,10 @@ void process_run(process_t* p) {
         }
       }
     }
+
+    sleep(1);
+    printf("process %d's money: %d\n", p->id, p->money);
+    sleep(1);
   }
 }
 
