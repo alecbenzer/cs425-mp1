@@ -12,6 +12,10 @@ int num_snapshots = 5;
 int seed = 100;
 int*** channels;
 
+int max(int a, int b) {
+  return a > b ? a : b;
+}
+
 // Returns a random int in {0,...,n-1}
 int randn(int n) {
   return (int)(((double)rand()) / RAND_MAX * n);
@@ -55,38 +59,93 @@ void parse_flags(int argc, char** argv) {
   }
 }
 
+typedef enum {
+  MONEY_TRANSFER = 1,
+} message_type_t;
+
+typedef enum {
+  SEND = 0,
+  RECV,
+} message_dir_t;
+
+typedef struct {
+  message_type_t type;
+  message_dir_t dir;
+  int lamport_timestamp;
+  int from;
+  int to;
+
+  // data specific to the type of message
+  int transfer_amt;
+} message_t;
+
 typedef struct {
   int id;
   int money;
+  int next_lamport_timestamp;
+  size_t message_log_size;
+  message_t** message_log;
 } process_t;
 
 void process_init(process_t* p, int id) {
   p->id = id;
   p->money = 100;
+  p->next_lamport_timestamp = 0;
+  p->message_log_size = 0;
+  p->message_log = NULL;
 }
 
-void process_handle_message(process_t* p, int fd) {
-  char type;
-  if (read(fd, &type, 1) != 1) {
+void process_store_message(process_t* p, message_t* msg) {
+  p->message_log = realloc(p->message_log, sizeof(message_t*) * ++p->message_log_size);
+  p->message_log[p->message_log_size - 1] = msg;
+  printf("Process %d stored a message with timestamp %d\n", p->id, msg->lamport_timestamp);
+}
+
+void process_receive_message(process_t* p, int fd, int from) {
+  message_t* msg = malloc(sizeof(message_t));
+  msg->dir = RECV;
+  msg->from = from;
+  msg->to = p->id;
+
+  int send_lamport_timestamp;
+  if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) != sizeof(send_lamport_timestamp)) {
     perror("read error");
     return;
   }
-  unsigned char amt;
-  switch (type) {
-    case 0x1:
-      read(fd, &amt, sizeof(amt));
-      p->money += amt;
-      break;
-    default:
-      fprintf(stderr, "Undefined message type\n");
+  msg->lamport_timestamp = max(send_lamport_timestamp, p->next_lamport_timestamp);
+  p->next_lamport_timestamp = msg->lamport_timestamp + 1;
+
+  if (read(fd, &msg->type, sizeof(msg->type)) != sizeof(msg->type)) {
+    perror("read error");
+    return;
   }
+
+  if (msg->type == MONEY_TRANSFER) {
+    read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+    p->money += msg->transfer_amt;
+  } else {
+    fprintf(stderr, "Undefined message type id %d\n", msg->type);
+  }
+
+  process_store_message(p, msg);
 }
 
-void process_send_message(process_t* state, int to) {
-  unsigned char amt = randn(256);  // random amount
-  char msg[] = {0x1, amt};
-  state->money -= amt;
-  write(channels[state->id][to][0], msg, sizeof(msg));
+void process_send_money(process_t* p, int to) {
+  message_t* msg = malloc(sizeof(message_t));
+  msg->lamport_timestamp = p->next_lamport_timestamp++;
+  msg->type = MONEY_TRANSFER;
+  msg->dir = SEND;
+  msg->from = p->id;
+  msg->to = to;
+  msg->transfer_amt = randn(256);
+
+  p->money -= msg->transfer_amt;
+
+  write(channels[p->id][to][0], &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
+  write(channels[p->id][to][0], &msg->type, sizeof(msg->type));
+  write(channels[p->id][to][0], &msg->transfer_amt, sizeof(msg->transfer_amt));
+
+  process_store_message(p, msg);
 }
 
 void process_run(process_t* p) {
@@ -132,19 +191,17 @@ void process_run(process_t* p) {
     // randomly decide to send or receive a message
     int choice = randn(5);
     if (choice) {  // send
-      process_send_message(p, random_process(p->id));
+      process_send_money(p, random_process(p->id));
     } else {  // receive
-      int wait_for = randn(300);  // ms
+      int wait_for = randn(300) + 1;  // ms
       poll(fds, num_processes - 1, wait_for);
       for (i = 0; i < num_processes - 1; ++i) {
         if (fds[i].revents & POLLIN) {
-          process_handle_message(p, fds[i].fd);
+          process_receive_message(p, fds[i].fd, i);
         }
       }
     }
 
-    sleep(1);
-    printf("process %d's money: %d\n", p->id, p->money);
     sleep(1);
   }
 }
