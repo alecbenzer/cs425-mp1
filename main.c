@@ -130,7 +130,7 @@ void process_receive_message(process_t* p, int fd, int from) {
   process_store_message(p, msg);
 }
 
-void process_send_money(process_t* p, int to) {
+void process_send_money(process_t* p, int fd, int to) {
   message_t* msg = malloc(sizeof(message_t));
   msg->lamport_timestamp = p->next_lamport_timestamp++;
   msg->type = MONEY_TRANSFER;
@@ -141,9 +141,11 @@ void process_send_money(process_t* p, int to) {
 
   p->money -= msg->transfer_amt;
 
-  write(channels[p->id][to][0], &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
-  write(channels[p->id][to][0], &msg->type, sizeof(msg->type));
-  write(channels[p->id][to][0], &msg->transfer_amt, sizeof(msg->transfer_amt));
+  printf("before write()\n");
+  write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
+  write(fd, &msg->type, sizeof(msg->type));
+  write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+  printf("after write()\n");
 
   process_store_message(p, msg);
 }
@@ -177,19 +179,44 @@ void process_run(process_t* p) {
   // channels[*][id][1]
   
   // construct a poll set for reading
-  struct pollfd* fds = malloc(sizeof(*fds) * num_processes);
+  struct pollfd* read_fds = malloc(sizeof(struct pollfd) * num_processes);
   for (i = 0; i < num_processes; ++i) {
     if (i == p->id) {
-      fds[i].fd = -1;
+      read_fds[i].fd = -1;
     } else {
-      fds[i].fd = channels[i][p->id][1];
-      fds[i].events = POLLIN;
+      read_fds[i].fd = channels[i][p->id][1];
+      read_fds[i].events = POLLIN;
+    }
+  }
+  struct pollfd* write_fds = malloc(sizeof(struct pollfd) * num_processes);
+  for (i = 0; i < num_processes; ++i) {
+    if (i == p->id) {
+      write_fds[i].fd = -1;
+    } else {
+      write_fds[i].fd = channels[p->id][i][0];
+      write_fds[i].events = POLLOUT;
     }
   }
 
   while (1) {
+    if (randn(5)) {
+      poll(read_fds, num_processes, 300);
+      for (i = 0; i < num_processes; ++i) {
+        if (read_fds[i].revents & POLLIN) {
+          process_receive_message(p, read_fds[i].fd, i);
+        }
+      }
+    } else {
+      poll(write_fds, num_processes, 300);
+      for (i = 0; i < num_processes; ++i) {
+        if (write_fds[i].revents & POLLOUT) {
+          process_send_money(p, write_fds[i].fd, i);
+        }
+      }
+    }
+    printf("process %d: %d money\n", p->id, p->money);
     // randomly decide to send or receive a message
-    int choice = randn(5);
+    /* int choice = randn(5);
     if (choice) {  // send
       process_send_money(p, random_process(p->id));
     } else {  // receive
@@ -200,9 +227,7 @@ void process_run(process_t* p) {
           process_receive_message(p, fds[i].fd, i);
         }
       }
-    }
-
-    sleep(1);
+    } */
   }
 }
 
