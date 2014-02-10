@@ -141,11 +141,9 @@ void process_send_money(process_t* p, int fd, int to) {
 
   p->money -= msg->transfer_amt;
 
-  printf("before write()\n");
   write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
   write(fd, &msg->type, sizeof(msg->type));
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-  printf("after write()\n");
 
   process_store_message(p, msg);
 }
@@ -215,19 +213,6 @@ void process_run(process_t* p) {
       }
     }
     printf("process %d: %d money\n", p->id, p->money);
-    // randomly decide to send or receive a message
-    /* int choice = randn(5);
-    if (choice) {  // send
-      process_send_money(p, random_process(p->id));
-    } else {  // receive
-      int wait_for = randn(300) + 1;  // ms
-      poll(fds, num_processes - 1, wait_for);
-      for (i = 0; i < num_processes - 1; ++i) {
-        if (fds[i].revents & POLLIN) {
-          process_receive_message(p, fds[i].fd, i);
-        }
-      }
-    } */
   }
 }
 
