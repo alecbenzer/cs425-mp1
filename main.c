@@ -14,16 +14,15 @@ int ***channels;
 
 int max(int a, int b) { return a > b ? a : b; }
 
-void print_vector_timestamp(int *timestamp) {
+void print_vector_timestamp(FILE *f, int *timestamp) {
   int i;
-  printf("[ ");
+  fprintf(f, "[");
   for (i = 0; i < num_processes; i++) {
-    printf("%i", timestamp[i]);
+    fprintf(f, "%i", timestamp[i]);
     if (i != num_processes - 1)
-      printf(",");
+      fprintf(f, ",");
   }
-  printf(" ]");
-  printf("\n");
+  fprintf(f, "]\n");
 }
 
 // Returns a random int in {0,...,n-1}
@@ -95,6 +94,7 @@ typedef struct {
   int *next_vector_timestamp;
   size_t message_log_size;
   message_t **message_log;
+  FILE *log_file;
 } process_t;
 
 void process_init(process_t *p, int id) {
@@ -104,16 +104,19 @@ void process_init(process_t *p, int id) {
   p->next_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
   p->message_log_size = 0;
   p->message_log = NULL;
+
+  char log_file_name[1024];
+  snprintf(log_file_name, sizeof(log_file_name), "log.%d", id);
+  p->log_file = fopen(log_file_name, "w");
 }
 
 void process_store_message(process_t *p, message_t *msg) {
   p->message_log =
       realloc(p->message_log, sizeof(message_t *) * ++p->message_log_size);
   p->message_log[p->message_log_size - 1] = msg;
-  printf("Process %d stored a message from process %i with lamport timestamp "
-         "%d and vector timestamp ",
-         p->id, msg->from, msg->lamport_timestamp);
-  print_vector_timestamp(msg->vector_timestamp);
+  fprintf(p->log_file, "%i %d ", msg->from, msg->lamport_timestamp);
+  print_vector_timestamp(p->log_file, msg->vector_timestamp);
+  fflush(p->log_file);
   // printf("%i",(p->message_log)[(p->message_log_size)-1]->transfer_amt);
 }
 
@@ -145,7 +148,7 @@ void process_receive_message(process_t *p, int fd, int from) {
   }
 
   /*printf("SEND VECTOR %i\n", p->id);
-  print_vector_timestamp(send_vector_timestamp);
+  print_vector_timestamp(stdout, send_vector_timestamp);
   printf("END\n");*/
 
   // compute vector timestamp based on received timestamp
