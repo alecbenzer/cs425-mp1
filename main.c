@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <time.h>
 
 int num_processes = 4;
 int num_snapshots = 5;
@@ -22,7 +23,7 @@ void print_vector_timestamp(FILE *f, int *timestamp) {
     if (i != num_processes - 1)
       fprintf(f, ",");
   }
-  fprintf(f, "]\n");
+  fprintf(f, "]");
 }
 
 // Returns a random int in {0,...,n-1}
@@ -80,6 +81,7 @@ typedef struct {
   message_dir_t dir;
   int lamport_timestamp;
   int *vector_timestamp;
+  struct timespec real_timestamp;
   int from;
   int to;
 
@@ -108,6 +110,7 @@ void process_init(process_t *p, int id) {
   char log_file_name[1024];
   snprintf(log_file_name, sizeof(log_file_name), "log.%d", id);
   p->log_file = fopen(log_file_name, "w");
+  fprintf(p->log_file, "# from lamport vector real\n");
 }
 
 void process_store_message(process_t *p, message_t *msg) {
@@ -116,6 +119,8 @@ void process_store_message(process_t *p, message_t *msg) {
   p->message_log[p->message_log_size - 1] = msg;
   fprintf(p->log_file, "%i %d ", msg->from, msg->lamport_timestamp);
   print_vector_timestamp(p->log_file, msg->vector_timestamp);
+  fprintf(p->log_file, " %lld.%.9ld\n", (long long)msg->real_timestamp.tv_sec,
+          msg->real_timestamp.tv_nsec);
   fflush(p->log_file);
   // printf("%i",(p->message_log)[(p->message_log_size)-1]->transfer_amt);
 }
@@ -130,6 +135,9 @@ void process_receive_message(process_t *p, int fd, int from) {
   for (j = 0; j < num_processes; j++) {
     msg->vector_timestamp[j] = 0;
   }
+
+  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
+
   int send_lamport_timestamp;
   if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) !=
       sizeof(send_lamport_timestamp)) {
@@ -178,9 +186,12 @@ void process_receive_message(process_t *p, int fd, int from) {
 
 void process_send_money(process_t *p, int fd, int to) {
   message_t *msg = malloc(sizeof(message_t));
+
+  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
   msg->lamport_timestamp = p->next_lamport_timestamp++;
   ((p->next_vector_timestamp)[p->id])++;
   msg->vector_timestamp = p->next_vector_timestamp;
+
   msg->type = MONEY_TRANSFER;
   msg->dir = SEND;
   msg->from = p->id;
