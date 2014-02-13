@@ -173,7 +173,7 @@ void process_receive_message(process_t* p, int fd, int from) {
 void process_send_money(process_t* p, int fd, int to) {
   message_t* msg = malloc(sizeof(message_t));
   msg->lamport_timestamp = p->next_lamport_timestamp++;
-  ((p->next_vector_timestamp)[p->id])++;
+  p->next_vector_timestamp[p->id]++;
   msg->vector_timestamp = p->next_vector_timestamp;
   msg->type = MONEY_TRANSFER;
   msg->dir = SEND;
