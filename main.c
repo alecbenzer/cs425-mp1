@@ -137,7 +137,7 @@ void process_receive_message(process_t* p, int fd, int from) {
   p->next_lamport_timestamp = msg->lamport_timestamp + 1;
  
   int *send_vector_timestamp = (int *) malloc(num_processes * sizeof(int)); 
-  if (read(fd, send_vector_timestamp, sizeof(send_vector_timestamp)) != sizeof(send_vector_timestamp)) {
+  if (read(fd, send_vector_timestamp, sizeof(int)*num_processes) != sizeof(int)*num_processes) {
     perror("read error");
     return;
   }
@@ -184,7 +184,7 @@ void process_send_money(process_t* p, int fd, int to) {
   p->money -= msg->transfer_amt;
 
   write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
-  write(fd, msg->vector_timestamp, sizeof(msg->vector_timestamp));
+  write(fd, msg->vector_timestamp, sizeof(int)*num_processes);
   write(fd, &msg->type, sizeof(msg->type));
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
 
