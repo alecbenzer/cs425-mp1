@@ -140,8 +140,8 @@ void process_receive_message(process_t *p, int fd, int from) {
   for (j = 0; j < num_processes; j++) {
     msg->vector_timestamp[j] = 0;
   }
-  
-  #ifdef __APPLE__
+
+#ifdef __APPLE__
   clock_serv_t cclock;
   mach_timespec_t mts;
   host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
@@ -149,11 +149,10 @@ void process_receive_message(process_t *p, int fd, int from) {
   mach_port_deallocate(mach_task_self(), cclock);
   msg->real_timestamp.tv_sec = mts.tv_sec;
   msg->real_timestamp.tv_nsec = mts.tv_nsec;
-  
-  #else
-  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
-  #endif 
 
+#else
+  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
+#endif
 
   int send_lamport_timestamp;
   if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) !=
@@ -164,9 +163,10 @@ void process_receive_message(process_t *p, int fd, int from) {
   msg->lamport_timestamp =
       max(send_lamport_timestamp, p->next_lamport_timestamp);
   p->next_lamport_timestamp = msg->lamport_timestamp + 1;
- 
-  int *send_vector_timestamp = (int *) malloc(num_processes * sizeof(int)); 
-  if (read(fd, send_vector_timestamp, sizeof(int)*num_processes) != sizeof(int)*num_processes) {
+
+  int *send_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
+  if (read(fd, send_vector_timestamp, sizeof(int) * num_processes) !=
+      sizeof(int) * num_processes) {
     perror("read error");
     return;
   }
@@ -202,8 +202,8 @@ void process_receive_message(process_t *p, int fd, int from) {
 
 void process_send_money(process_t *p, int fd, int to) {
   message_t *msg = malloc(sizeof(message_t));
-  
-  #ifdef __APPLE__
+
+#ifdef __APPLE__
   clock_serv_t cclock;
   mach_timespec_t mts;
   host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
@@ -211,10 +211,10 @@ void process_send_money(process_t *p, int fd, int to) {
   mach_port_deallocate(mach_task_self(), cclock);
   msg->real_timestamp.tv_sec = mts.tv_sec;
   msg->real_timestamp.tv_nsec = mts.tv_nsec;
-  
-  #else
+
+#else
   clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
-  #endif 
+#endif
 
   msg->lamport_timestamp = p->next_lamport_timestamp++;
   p->next_vector_timestamp[p->id]++;
@@ -229,7 +229,7 @@ void process_send_money(process_t *p, int fd, int to) {
   p->money -= msg->transfer_amt;
 
   write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
-  write(fd, msg->vector_timestamp, sizeof(int)*num_processes);
+  write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
   write(fd, &msg->type, sizeof(msg->type));
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
 
