@@ -27,11 +27,11 @@ void print_vector_timestamp(FILE *f, int *timestamp) {
 }
 
 // Returns a random int in {0,...,n-1}
-int randn(int n) { return (int)(((double)rand()) / RAND_MAX * n); }
+int randint(int n) { return (int)(((double)rand()) / RAND_MAX * n); }
 
 // Returns a random process id, excluding the passed in id
 int random_process(int id) {
-  int result = randn(num_processes - 1);
+  int result = randint(num_processes - 1);
   if (result == id) {
     result = num_processes - 1;
   }
@@ -196,7 +196,7 @@ void process_send_money(process_t *p, int fd, int to) {
   msg->dir = SEND;
   msg->from = p->id;
   msg->to = to;
-  msg->transfer_amt = randn(256);
+  msg->transfer_amt = randint(256);
 
   p->money -= msg->transfer_amt;
 
@@ -257,7 +257,7 @@ void process_run(process_t *p) {
   }
 
   while (1) {
-    if (randn(5)) {
+    if (randint(5)) {
       poll(read_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (read_fds[i].revents & POLLIN) {
