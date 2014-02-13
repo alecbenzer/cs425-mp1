@@ -67,7 +67,7 @@ for i, j in product(range(len(messages)), repeat=2):
         continue
     if messages[i].vector <= messages[j].vector:
         if not (messages[i].real <= messages[j].real):
-            print "%r <= %r but not (%r <= %r)" % (messages[i].vector, messages[i+1].vector, messages[i].real, messages[i+1].real)
+            print "%r <= %r but not (%r <= %r)" % (messages[i].vector, messages[j].vector, messages[i].real, messages[j].real)
     if messages[i].vector < messages[j].vector:
         if not (messages[i].real < messages[j].real):
-            print "%r < %r but not (%r < %r)" % (messages[i].vector, messages[i+1].vector, messages[i].real, messages[i+1].real)
+            print "%r < %r but not (%r < %r)" % (messages[i].vector, messages[j].vector, messages[i].real, messages[j].real)
