@@ -62,15 +62,15 @@ for msgs in messages_by_process.values():
         if not (msgs[i].vector <= msgs[i+1].vector):
             print "%r should be <= %r" % (msgs[i].vector, msgs[i+1].vector)
 
-for i, j in product(range(len(messages)), repeat=2):
-    if i == j:
-        continue
-    if messages[i].vector <= messages[j].vector:
-        if not (messages[i].real <= messages[j].real):
-            print "%r <= %r but not (%r <= %r)" % (messages[i].vector, messages[j].vector, messages[i].real, messages[j].real)
-    if messages[i].vector < messages[j].vector:
-        if not (messages[i].real < messages[j].real):
-            print "%r < %r but not (%r < %r)" % (messages[i].vector, messages[j].vector, messages[i].real, messages[j].real)
-        if not (messages[i].lamport < messages[j].lamport):
-            print "%r < %r but not (%r < %r)" % (messages[i].vector, messages[j].vector, messages[i].lamport, messages[j].lamport)
+# Slow O(n^2) loop, but simpler than trying to do a partial sort or something
+# like that
+for m, n in product(messages, repeat=2):
+    if m.vector <= n.vector:
+        if not (m.real <= n.real):
+            print "%r <= %r but not (%r <= %r)" % (m.vector, n.vector, m.real, n.real)
+    if m.vector < n.vector:
+        if not (m.real < n.real):
+            print "%r < %r but not (%r < %r)" % (m.vector, n.vector, m.real, n.real)
+        if not (m.lamport < n.lamport):
+            print "%r < %r but not (%r < %r)" % (m.vector, n.vector, m.lamport, n.lamport)
 
