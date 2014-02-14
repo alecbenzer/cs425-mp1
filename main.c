@@ -161,7 +161,7 @@ void process_receive_message(process_t *p, int fd, int from) {
     return;
   }
   msg->lamport_timestamp =
-      max(send_lamport_timestamp, p->next_lamport_timestamp);
+      max(send_lamport_timestamp, p->next_lamport_timestamp) + 1;
   p->next_lamport_timestamp = msg->lamport_timestamp + 1;
 
   int *send_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
