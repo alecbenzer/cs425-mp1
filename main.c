@@ -18,6 +18,22 @@ int num_snapshots = 5;
 int seed = 100;
 int ***channels;
 
+// Portable (OSX, Linux) function to get system time with nanosecond percision.
+void get_time(struct timespec *ts) {
+#ifdef __APPLE__
+  clock_serv_t cclock;
+  mach_timespec_t mts;
+  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+  clock_get_time(cclock, &mts);
+  mach_port_deallocate(mach_task_self(), cclock);
+  ts->tv_sec = mts.tv_sec;
+  ts->tv_nsec = mts.tv_nsec;
+
+#else
+  clock_gettime(CLOCK_REALTIME, ts);
+#endif
+}
+
 int max(int a, int b) { return a > b ? a : b; }
 
 void print_vector_timestamp(FILE *f, int *timestamp) {
@@ -141,18 +157,7 @@ void process_receive_message(process_t *p, int fd, int from) {
     msg->vector_timestamp[j] = 0;
   }
 
-#ifdef __APPLE__
-  clock_serv_t cclock;
-  mach_timespec_t mts;
-  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-  clock_get_time(cclock, &mts);
-  mach_port_deallocate(mach_task_self(), cclock);
-  msg->real_timestamp.tv_sec = mts.tv_sec;
-  msg->real_timestamp.tv_nsec = mts.tv_nsec;
-
-#else
-  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
-#endif
+  get_time(&msg->real_timestamp);
 
   int send_lamport_timestamp;
   if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) !=
@@ -172,8 +177,8 @@ void process_receive_message(process_t *p, int fd, int from) {
   }
 
   /*printf("SEND VECTOR %i\n", p->id);
-  print_vector_timestamp(stdout, send_vector_timestamp);
-  printf("END\n");*/
+    print_vector_timestamp(stdout, send_vector_timestamp);
+    printf("END\n");*/
 
   // compute vector timestamp based on received timestamp
   int i;
@@ -203,18 +208,7 @@ void process_receive_message(process_t *p, int fd, int from) {
 void process_send_money(process_t *p, int fd, int to) {
   message_t *msg = malloc(sizeof(message_t));
 
-#ifdef __APPLE__
-  clock_serv_t cclock;
-  mach_timespec_t mts;
-  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-  clock_get_time(cclock, &mts);
-  mach_port_deallocate(mach_task_self(), cclock);
-  msg->real_timestamp.tv_sec = mts.tv_sec;
-  msg->real_timestamp.tv_nsec = mts.tv_nsec;
-
-#else
-  clock_gettime(CLOCK_REALTIME, &msg->real_timestamp);
-#endif
+  get_time(&msg->real_timestamp);
 
   msg->lamport_timestamp = p->next_lamport_timestamp++;
   p->next_vector_timestamp[p->id]++;
