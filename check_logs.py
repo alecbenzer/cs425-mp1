@@ -5,9 +5,17 @@ import numpy as np
 from collections import namedtuple
 from itertools import product
 
-Message = namedtuple('Message', ['from_id', 'to_id', 'lamport', 'vector', 'real'])
+Message = namedtuple(
+    'Message',
+    ['from_id',
+     'to_id',
+     'lamport',
+     'vector',
+     'real'])
+
 
 class VectorTimestamp(list):
+
     def __eq__(a, b):
         return all(x == y for x, y in zip(a, b))
 
@@ -45,7 +53,8 @@ for fn in filenames:
 
             from_id = int(from_id)
             lamport = int(lamport)
-            vector = VectorTimestamp([int(t) for t in vector.strip('[]').split(',')])
+            vector = VectorTimestamp([int(t)
+                                     for t in vector.strip('[]').split(',')])
             real = np.datetime64(int(float(real) * 1e9), 'ns')
 
             m = Message(from_id, to_id, lamport, vector, real)
@@ -55,12 +64,12 @@ for fn in filenames:
 # Check that each process's timestamps are monotonic
 for msgs in messages_by_process.values():
     for i in range(len(msgs) - 1):
-        if msgs[i].real > msgs[i+1].real:
+        if msgs[i].real > msgs[i + 1].real:
             print "ERROR"
-        if msgs[i].lamport > msgs[i+1].lamport:
+        if msgs[i].lamport > msgs[i + 1].lamport:
             print "ERROR"
-        if not (msgs[i].vector <= msgs[i+1].vector):
-            print "%r should be <= %r" % (msgs[i].vector, msgs[i+1].vector)
+        if not (msgs[i].vector <= msgs[i + 1].vector):
+            print "%r should be <= %r" % (msgs[i].vector, msgs[i + 1].vector)
 
 # Slow O(n^2) loop, but simpler than trying to do a partial sort or something
 # like that
@@ -73,4 +82,3 @@ for m, n in product(messages, repeat=2):
             print "%r < %r but not (%r < %r)" % (m.vector, n.vector, m.real, n.real)
         if not (m.lamport < n.lamport):
             print "%r < %r but not (%r < %r)" % (m.vector, n.vector, m.lamport, n.lamport)
-
