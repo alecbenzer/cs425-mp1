@@ -7,16 +7,18 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdbool.h>
 
 #ifdef __APPLE__
 #include <mach/clock.h>
 #include <mach/mach.h>
 #endif
 
-int num_processes = 4;
+int num_processes = 2;
 int num_snapshots = 5;
 int seed = 100;
 int ***channels;
+int exchange_rate = 20; //$20 per widget
 
 // Portable (OSX, Linux) function to get system time with nanosecond percision.
 void get_time(struct timespec *ts) {
@@ -89,12 +91,13 @@ void parse_flags(int argc, char **argv) {
 }
 
 typedef enum {
+  WIDGET_TRANSFER = 0,
   MONEY_TRANSFER = 1,
 } message_type_t;
 
 typedef enum {
   SEND = 0,
-  RECV,
+  RECV = 1,
 } message_dir_t;
 
 typedef struct {
@@ -113,6 +116,7 @@ typedef struct {
 typedef struct {
   int id;
   int money;
+  int widgets;
   int next_lamport_timestamp;
   int *next_vector_timestamp;
   size_t message_log_size;
@@ -123,6 +127,7 @@ typedef struct {
 void process_init(process_t *p, int id) {
   p->id = id;
   p->money = 100;
+  p->widgets = 20;
   p->next_lamport_timestamp = 0;
   p->next_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
   p->message_log_size = 0;
@@ -146,9 +151,53 @@ void process_store_message(process_t *p, message_t *msg) {
   // printf("%i",(p->message_log)[(p->message_log_size)-1]->transfer_amt);
 }
 
+/*
+ * dir indicates whether the currency is being sent in response to a transaction or to initiate it
+ * amt is the amount of currency you want to send. if set to -1, a random currency is sent, o/w the specified amt is sent
+ */
+void process_send_currency(process_t *p, int fd, int to, int type, int dir, int amt) {
+  message_t *msg = malloc(sizeof(message_t));
+
+  get_time(&msg->real_timestamp);
+
+  msg->lamport_timestamp = p->next_lamport_timestamp++;
+  p->next_vector_timestamp[p->id]++;
+  msg->vector_timestamp = p->next_vector_timestamp;
+  bool amt_defined = (amt != -1);
+  if (type) {
+    msg->type = MONEY_TRANSFER;
+    //check whether an amount is specified
+    if (!amt_defined)
+        msg->transfer_amt = randint(256);
+    else 
+        msg->transfer_amt = amt;
+    p->money -= msg->transfer_amt;
+    printf("Sent %i dollars from process %i to process %i\n", msg->transfer_amt, p->id, to);
+  } else {  
+    msg->type = WIDGET_TRANSFER;
+    if (!amt_defined)
+        msg->transfer_amt = randint(21);
+    else 
+        msg->transfer_amt = amt;
+    p->widgets -= msg->transfer_amt;
+    printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt, p->id, to);
+  }  
+  msg->dir = dir;
+  msg->from = p->id;
+  msg->to = to;
+  //we send dir so that on receipt of a message, a process knows whether to respond with currency or to simply accept the currency
+  write(fd, &dir, sizeof(dir));
+  write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
+  write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
+  write(fd, &msg->type, sizeof(msg->type));
+  write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+
+  process_store_message(p, msg);
+
+}
+
 void process_receive_message(process_t *p, int fd, int from) {
   message_t *msg = malloc(sizeof(message_t));
-  msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
   msg->vector_timestamp = (int *)malloc(num_processes * sizeof(int));
@@ -158,6 +207,11 @@ void process_receive_message(process_t *p, int fd, int from) {
   }
 
   get_time(&msg->real_timestamp);
+  if (read(fd, &msg->dir, sizeof(msg->dir)) !=
+      sizeof(msg->dir)) {
+    perror("read error");
+    return;
+  }
 
   int send_lamport_timestamp;
   if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) !=
@@ -175,10 +229,6 @@ void process_receive_message(process_t *p, int fd, int from) {
     perror("read error");
     return;
   }
-
-  /*printf("SEND VECTOR %i\n", p->id);
-    print_vector_timestamp(stdout, send_vector_timestamp);
-    printf("END\n");*/
 
   // compute vector timestamp based on received timestamp
   int i;
@@ -199,34 +249,24 @@ void process_receive_message(process_t *p, int fd, int from) {
   if (msg->type == MONEY_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->money += msg->transfer_amt;
+    if (msg->dir == SEND) {
+      int sendback_amt = msg->transfer_amt/exchange_rate;
+      //need to send back widgets, received money
+      printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from); 
+      process_send_currency(p,channels[p->id][msg->from][0],msg->from,WIDGET_TRANSFER,RECV,sendback_amt);
+    } 
+  } else if (msg->type == WIDGET_TRANSFER) { 
+    read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+    p->widgets += msg->transfer_amt; 
+    if (msg->dir == SEND) {
+      int sendback_amt = msg->transfer_amt*exchange_rate;
+      //need to send back money, received widgets
+      printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from); 
+      process_send_currency(p,channels[p->id][msg->from][0],msg->from,MONEY_TRANSFER,RECV,sendback_amt);
+    }
   } else {
     fprintf(stderr, "Undefined message type id %d\n", msg->type);
   }
-  process_store_message(p, msg);
-}
-
-void process_send_money(process_t *p, int fd, int to) {
-  message_t *msg = malloc(sizeof(message_t));
-
-  get_time(&msg->real_timestamp);
-
-  msg->lamport_timestamp = p->next_lamport_timestamp++;
-  p->next_vector_timestamp[p->id]++;
-  msg->vector_timestamp = p->next_vector_timestamp;
-
-  msg->type = MONEY_TRANSFER;
-  msg->dir = SEND;
-  msg->from = p->id;
-  msg->to = to;
-  msg->transfer_amt = randint(256);
-
-  p->money -= msg->transfer_amt;
-
-  write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
-  write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
-  write(fd, &msg->type, sizeof(msg->type));
-  write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-
   process_store_message(p, msg);
 }
 
@@ -290,11 +330,19 @@ void process_run(process_t *p) {
       poll(write_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (write_fds[i].revents & POLLOUT) {
-          process_send_money(p, write_fds[i].fd, i);
+          //randomly generate what type of currency we want to send (widgets or money)
+          int currency = randint(2);
+          if (currency) {
+            process_send_currency(p, write_fds[i].fd,i,MONEY_TRANSFER,SEND,-1);
+            //printf("Sent money from process %i to process %i\n", p->id, i);
+          } else { 
+            process_send_currency(p, write_fds[i].fd,i,WIDGET_TRANSFER,SEND,-1);
+            //printf("Sent widgets from process %i to process %i\n", p->id, i);
+          }
         }
       }
     }
-    printf("process %d: %d money\n", p->id, p->money);
+    printf("process %d: %d money %d widgets\n", p->id, p->money, p->widgets);
   }
 }
 
