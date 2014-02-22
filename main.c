@@ -93,6 +93,7 @@ void parse_flags(int argc, char **argv) {
 typedef enum {
   WIDGET_TRANSFER = 0,
   MONEY_TRANSFER = 1,
+  MARKER = 2,
 } message_type_t;
 
 typedef enum {
@@ -111,6 +112,9 @@ typedef struct {
 
   // data specific to the type of message
   int transfer_amt;
+  int response_requested;
+
+  int snapshot_id;
 } message_t;
 
 typedef struct {
@@ -122,6 +126,13 @@ typedef struct {
   size_t message_log_size;
   message_t **message_log;
   FILE *log_file;
+
+  // used only by process 0
+  int snapshot_count;
+
+  // recording[i][j] indicates whether we're recoding incoming channel i for
+  // snapshot j
+  int **recording;
 } process_t;
 
 void process_init(process_t *p, int id) {
@@ -137,6 +148,14 @@ void process_init(process_t *p, int id) {
   snprintf(log_file_name, sizeof(log_file_name), "log.%d", id);
   p->log_file = fopen(log_file_name, "w");
   fprintf(p->log_file, "# from lamport vector real\n");
+
+  p->snapshot_count = 0;
+
+  p->recording = malloc(sizeof(int *) * num_processes);
+  int i;
+  for (i = 0; i < num_processes; ++i) {
+    p->recording = malloc(sizeof(int) * num_snapshots);
+  }
 }
 
 void process_store_message(process_t *p, message_t *msg) {
@@ -149,6 +168,66 @@ void process_store_message(process_t *p, message_t *msg) {
           msg->real_timestamp.tv_nsec);
   fflush(p->log_file);
   // printf("%i",(p->message_log)[(p->message_log_size)-1]->transfer_amt);
+
+  // check if we should write to a snapshot file
+  int snapshot_id;
+  for (snapshot_id = 0; snapshot_id < num_snapshots; ++snapshot_id) {
+    if (p->recording[msg->from][snapshot_id]) {
+      // TODO: print message to appropriate snapshot file
+    }
+  }
+}
+
+void message_init(message_t *msg, process_t *p) {
+  get_time(&msg->real_timestamp);
+  msg->lamport_timestamp = p->next_lamport_timestamp++;
+  p->next_vector_timestamp[p->id]++;
+  msg->vector_timestamp = p->next_vector_timestamp;
+  msg->dir = SEND;
+}
+
+void send_message_header(message_t *msg, int fd) {
+  // we send dir so that on receipt of a message, a process knows whether to
+  // respond with currency or to simply accept the currency
+  write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
+  write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
+  write(fd, &msg->type, sizeof(msg->type));
+}
+
+void read_message_header(message_t *msg, process_t *p, int fd) {
+  int lamport_timestamp;
+  read(fd, &lamport_timestamp, sizeof(lamport_timestamp));
+  msg->lamport_timestamp =
+      max(send_lamport_timestamp, p->next_lamport_timestamp) + 1;
+  p->next_lamport_timestamp = msg->lamport_timestamp + 1;
+
+  msg->vector_timestamp = (int *)malloc(num_processes * sizeof(int));
+  int j;
+  for (j = 0; j < num_processes; j++) {
+    msg->vector_timestamp[j] = 0;
+  }
+  int *send_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
+  if (read(fd, send_vector_timestamp, sizeof(int) * num_processes) !=
+      sizeof(int) * num_processes) {
+    perror("read error");
+    return;
+  }
+  // compute vector timestamp based on received timestamp
+  int i;
+  for (i = 0; i < num_processes; ++i) {
+    if (i == p->id) {
+      continue;
+    }
+    msg->vector_timestamp[i] =
+        max(send_vector_timestamp[i], (p->next_vector_timestamp)[i]);
+  }
+  p->next_vector_timestamp[p->id]++;
+  msg->vector_timestamp[p->id] = p->next_vector_timestamp[p->id];
+  p->next_vector_timestamp = msg->vector_timestamp;
+
+  read(fd, &msg->type, sizeof(msg->type));
+
+  get_time(&msg->real_timestamp);
 }
 
 /*
@@ -156,15 +235,11 @@ void process_store_message(process_t *p, message_t *msg) {
  * or to initiate it amt is the amount of currency you want to send. if set to
  * -1, a random currency is sent, o/w the specified amt is sent
  */
-void process_send_currency(process_t *p, int fd, int to, int type, int dir,
-                           int amt) {
+void process_send_currency(process_t *p, int fd, int to, int type,
+                           int response_requested, int amt) {
   message_t *msg = malloc(sizeof(message_t));
+  message_init(msg, p);
 
-  get_time(&msg->real_timestamp);
-
-  msg->lamport_timestamp = p->next_lamport_timestamp++;
-  p->next_vector_timestamp[p->id]++;
-  msg->vector_timestamp = p->next_vector_timestamp;
   bool amt_defined = (amt != -1);
   if (type) {
     msg->type = MONEY_TRANSFER;
@@ -186,15 +261,12 @@ void process_send_currency(process_t *p, int fd, int to, int type, int dir,
     printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt,
            p->id, to);
   }
-  msg->dir = dir;
+  msg->response_requested = response_requested;
   msg->from = p->id;
   msg->to = to;
-  // we send dir so that on receipt of a message, a process knows whether to
-  // respond with currency or to simply accept the currency
-  write(fd, &dir, sizeof(dir));
-  write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
-  write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
-  write(fd, &msg->type, sizeof(msg->type));
+
+  send_message_header(msg, fd);
+  write(fd, &msg->response_requested, sizeof(msg->response_requested));
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
 
   process_store_message(p, msg);
@@ -202,49 +274,14 @@ void process_send_currency(process_t *p, int fd, int to, int type, int dir,
 
 void process_receive_message(process_t *p, int fd, int from) {
   message_t *msg = malloc(sizeof(message_t));
+  read_message_header(msg, p, fd);
+
+  msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
-  msg->vector_timestamp = (int *)malloc(num_processes * sizeof(int));
-  int j;
-  for (j = 0; j < num_processes; j++) {
-    msg->vector_timestamp[j] = 0;
-  }
 
-  get_time(&msg->real_timestamp);
-  if (read(fd, &msg->dir, sizeof(msg->dir)) != sizeof(msg->dir)) {
-    perror("read error");
-    return;
-  }
-
-  int send_lamport_timestamp;
-  if (read(fd, &send_lamport_timestamp, sizeof(send_lamport_timestamp)) !=
-      sizeof(send_lamport_timestamp)) {
-    perror("read error");
-    return;
-  }
-  msg->lamport_timestamp =
-      max(send_lamport_timestamp, p->next_lamport_timestamp) + 1;
-  p->next_lamport_timestamp = msg->lamport_timestamp + 1;
-
-  int *send_vector_timestamp = (int *)malloc(num_processes * sizeof(int));
-  if (read(fd, send_vector_timestamp, sizeof(int) * num_processes) !=
-      sizeof(int) * num_processes) {
-    perror("read error");
-    return;
-  }
-
-  // compute vector timestamp based on received timestamp
-  int i;
-  for (i = 0; i < num_processes; ++i) {
-    if (i != p->id) {
-      msg->vector_timestamp[i] =
-          max(send_vector_timestamp[i], (p->next_vector_timestamp)[i]);
-    }
-  }
-  p->next_vector_timestamp[p->id]++;
-  msg->vector_timestamp[p->id] = p->next_vector_timestamp[p->id];
-  p->next_vector_timestamp = msg->vector_timestamp;
-  if (read(fd, &msg->type, sizeof(msg->type)) != sizeof(msg->type)) {
+  if (read(fd, &msg->response_requested, sizeof(msg->response_requested)) !=
+      sizeof(msg->response_requested)) {
     perror("read error");
     return;
   }
@@ -252,27 +289,63 @@ void process_receive_message(process_t *p, int fd, int from) {
   if (msg->type == MONEY_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->money += msg->transfer_amt;
-    if (msg->dir == SEND) {
+    if (response_requested) {
       int sendback_amt = msg->transfer_amt / exchange_rate;
       // need to send back widgets, received money
       printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from);
       process_send_currency(p, channels[p->id][msg->from][0], msg->from,
-                            WIDGET_TRANSFER, RECV, sendback_amt);
+                            WIDGET_TRANSFER, 0, sendback_amt);
     }
   } else if (msg->type == WIDGET_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->widgets += msg->transfer_amt;
-    if (msg->dir == SEND) {
+    if (response_requested) {
       int sendback_amt = msg->transfer_amt * exchange_rate;
       // need to send back money, received widgets
       printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
       process_send_currency(p, channels[p->id][msg->from][0], msg->from,
-                            MONEY_TRANSFER, RECV, sendback_amt);
+                            MONEY_TRANSFER, 0, sendback_amt);
+    }
+  } else if (msg->type == MARKER) {
+    // TODO: record this process's state
+    int snapshot_id;
+    read(fd, &snapshot_id, sizeof(snapshot_id));
+    int i;
+    for (i = 0; i < num_processes; ++i) {
+      if (i == p->id) {
+        continue;
+      }
+      if (p->recording[i][snapshot_id]) {
+        p->recording[i][snapshot_id] = 0;
+      } else {
+        p->recording[i][snapshot_id] = 1;
+      }
     }
   } else {
     fprintf(stderr, "Undefined message type id %d\n", msg->type);
   }
   process_store_message(p, msg);
+}
+
+// Will only every be called with p being process 0
+void initiate_snapshot(process_t *p) {
+  int snapshot_id = p->snapshot_count++;
+  // TODO: record your own state
+
+  int i;
+  for (i = 0; i < num_processes; ++i) {
+    if (i == p->id) {
+      continue;
+    }
+
+    message_t *msg = malloc(sizeof(message_t));
+    message_init(msg, p);
+    msg->type = MARKER;
+    msg->snapshot_id = snapshot_id;
+
+    send_message_header(msg, channels[p->id][i][0]);
+    write(fd, &msg->snapshot_id, sizeof(msg->snapshot_id))
+  }
 }
 
 void process_run(process_t *p) {
@@ -348,6 +421,12 @@ void process_run(process_t *p) {
             // printf("Sent widgets from process %i to process %i\n", p->id, i);
           }
         }
+      }
+    }
+
+    if (p->id == 0 && p->snapshot_count < num_snapshots) {
+      if (!randint(10)) { // 1 in 10
+        initiate_snapshot(p);
       }
     }
     printf("process %d: %d money %d widgets\n", p->id, p->money, p->widgets);
