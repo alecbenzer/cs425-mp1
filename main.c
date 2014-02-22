@@ -152,10 +152,12 @@ void process_store_message(process_t *p, message_t *msg) {
 }
 
 /*
- * dir indicates whether the currency is being sent in response to a transaction or to initiate it
- * amt is the amount of currency you want to send. if set to -1, a random currency is sent, o/w the specified amt is sent
+ * dir indicates whether the currency is being sent in response to a transaction
+ * or to initiate it amt is the amount of currency you want to send. if set to
+ * -1, a random currency is sent, o/w the specified amt is sent
  */
-void process_send_currency(process_t *p, int fd, int to, int type, int dir, int amt) {
+void process_send_currency(process_t *p, int fd, int to, int type, int dir,
+                           int amt) {
   message_t *msg = malloc(sizeof(message_t));
 
   get_time(&msg->real_timestamp);
@@ -166,26 +168,29 @@ void process_send_currency(process_t *p, int fd, int to, int type, int dir, int 
   bool amt_defined = (amt != -1);
   if (type) {
     msg->type = MONEY_TRANSFER;
-    //check whether an amount is specified
+    // check whether an amount is specified
     if (!amt_defined)
-        msg->transfer_amt = randint(256);
-    else 
-        msg->transfer_amt = amt;
+      msg->transfer_amt = randint(256);
+    else
+      msg->transfer_amt = amt;
     p->money -= msg->transfer_amt;
-    printf("Sent %i dollars from process %i to process %i\n", msg->transfer_amt, p->id, to);
-  } else {  
+    printf("Sent %i dollars from process %i to process %i\n", msg->transfer_amt,
+           p->id, to);
+  } else {
     msg->type = WIDGET_TRANSFER;
     if (!amt_defined)
-        msg->transfer_amt = randint(21);
-    else 
-        msg->transfer_amt = amt;
+      msg->transfer_amt = randint(21);
+    else
+      msg->transfer_amt = amt;
     p->widgets -= msg->transfer_amt;
-    printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt, p->id, to);
-  }  
+    printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt,
+           p->id, to);
+  }
   msg->dir = dir;
   msg->from = p->id;
   msg->to = to;
-  //we send dir so that on receipt of a message, a process knows whether to respond with currency or to simply accept the currency
+  // we send dir so that on receipt of a message, a process knows whether to
+  // respond with currency or to simply accept the currency
   write(fd, &dir, sizeof(dir));
   write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
   write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
@@ -193,7 +198,6 @@ void process_send_currency(process_t *p, int fd, int to, int type, int dir, int 
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
 
   process_store_message(p, msg);
-
 }
 
 void process_receive_message(process_t *p, int fd, int from) {
@@ -207,8 +211,7 @@ void process_receive_message(process_t *p, int fd, int from) {
   }
 
   get_time(&msg->real_timestamp);
-  if (read(fd, &msg->dir, sizeof(msg->dir)) !=
-      sizeof(msg->dir)) {
+  if (read(fd, &msg->dir, sizeof(msg->dir)) != sizeof(msg->dir)) {
     perror("read error");
     return;
   }
@@ -250,19 +253,21 @@ void process_receive_message(process_t *p, int fd, int from) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->money += msg->transfer_amt;
     if (msg->dir == SEND) {
-      int sendback_amt = msg->transfer_amt/exchange_rate;
-      //need to send back widgets, received money
-      printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from); 
-      process_send_currency(p,channels[p->id][msg->from][0],msg->from,WIDGET_TRANSFER,RECV,sendback_amt);
-    } 
-  } else if (msg->type == WIDGET_TRANSFER) { 
+      int sendback_amt = msg->transfer_amt / exchange_rate;
+      // need to send back widgets, received money
+      printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from);
+      process_send_currency(p, channels[p->id][msg->from][0], msg->from,
+                            WIDGET_TRANSFER, RECV, sendback_amt);
+    }
+  } else if (msg->type == WIDGET_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-    p->widgets += msg->transfer_amt; 
+    p->widgets += msg->transfer_amt;
     if (msg->dir == SEND) {
-      int sendback_amt = msg->transfer_amt*exchange_rate;
-      //need to send back money, received widgets
-      printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from); 
-      process_send_currency(p,channels[p->id][msg->from][0],msg->from,MONEY_TRANSFER,RECV,sendback_amt);
+      int sendback_amt = msg->transfer_amt * exchange_rate;
+      // need to send back money, received widgets
+      printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
+      process_send_currency(p, channels[p->id][msg->from][0], msg->from,
+                            MONEY_TRANSFER, RECV, sendback_amt);
     }
   } else {
     fprintf(stderr, "Undefined message type id %d\n", msg->type);
@@ -330,14 +335,17 @@ void process_run(process_t *p) {
       poll(write_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (write_fds[i].revents & POLLOUT) {
-          //randomly generate what type of currency we want to send (widgets or money)
+          // randomly generate what type of currency we want to send (widgets or
+          // money)
           int currency = randint(2);
           if (currency) {
-            process_send_currency(p, write_fds[i].fd,i,MONEY_TRANSFER,SEND,-1);
-            //printf("Sent money from process %i to process %i\n", p->id, i);
-          } else { 
-            process_send_currency(p, write_fds[i].fd,i,WIDGET_TRANSFER,SEND,-1);
-            //printf("Sent widgets from process %i to process %i\n", p->id, i);
+            process_send_currency(p, write_fds[i].fd, i, MONEY_TRANSFER, SEND,
+                                  -1);
+            // printf("Sent money from process %i to process %i\n", p->id, i);
+          } else {
+            process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, SEND,
+                                  -1);
+            // printf("Sent widgets from process %i to process %i\n", p->id, i);
           }
         }
       }
