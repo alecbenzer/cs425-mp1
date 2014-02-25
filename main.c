@@ -93,6 +93,7 @@ void parse_flags(int argc, char **argv) {
 typedef enum {
   WIDGET_TRANSFER = 0,
   MONEY_TRANSFER = 1,
+  MARKER = 2,
 } message_type_t;
 
 typedef enum {
@@ -108,7 +109,6 @@ typedef struct {
   struct timespec real_timestamp;
   int from;
   int to;
-
   // data specific to the type of message
   int transfer_amt;
 } message_t;
