@@ -13,8 +13,7 @@
 #include <mach/clock.h>
 #include <mach/mach.h>
 #endif
-
-int num_processes = 2;
+int num_processes = 4;
 int num_snapshots = 5;
 int seed = 100;
 int ***channels;
@@ -30,7 +29,7 @@ void get_time(struct timespec *ts) {
   mach_port_deallocate(mach_task_self(), cclock);
   ts->tv_sec = mts.tv_sec;
   ts->tv_nsec = mts.tv_nsec;
-
+  
 #else
   clock_gettime(CLOCK_REALTIME, ts);
 #endif
@@ -187,8 +186,6 @@ void message_init(message_t *msg, process_t *p) {
 }
 
 void send_message_header(message_t *msg, int fd) {
-  // we send dir so that on receipt of a message, a process knows whether to
-  // respond with currency or to simply accept the currency
   write(fd, &msg->lamport_timestamp, sizeof(msg->lamport_timestamp));
   write(fd, msg->vector_timestamp, sizeof(int) * num_processes);
   write(fd, &msg->type, sizeof(msg->type));
@@ -233,7 +230,7 @@ void read_message_header(message_t *msg, process_t *p, int fd) {
 }
 
 /*
- * dir indicates whether the currency is being sent in response to a transaction
+ * response_requested indicates whether the currency is being sent in response to a transaction
  * or to initiate it amt is the amount of currency you want to send. if set to
  * -1, a random currency is sent, o/w the specified amt is sent
  */
@@ -285,34 +282,10 @@ void process_receive_message(process_t *p, int fd, int from) {
   msg->from = from;
   msg->to = p->id;
 
-  if (read(fd, &msg->response_requested, sizeof(msg->response_requested)) !=
-      sizeof(msg->response_requested)) {
-    perror("read error");
-    return;
-  }
-
-  if (msg->type == MONEY_TRANSFER) {
-    read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-    p->money += msg->transfer_amt;
-    if (msg->response_requested) {
-      int sendback_amt = msg->transfer_amt / exchange_rate;
-      // need to send back widgets, received money
-      printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from);
-      process_send_currency(p, channels[p->id][msg->from][0], msg->from,
-                            WIDGET_TRANSFER, 0, sendback_amt);
-    }
-  } else if (msg->type == WIDGET_TRANSFER) {
-    read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-    p->widgets += msg->transfer_amt;
-    if (msg->response_requested) {
-      int sendback_amt = msg->transfer_amt * exchange_rate;
-      // need to send back money, received widgets
-      printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
-      process_send_currency(p, channels[p->id][msg->from][0], msg->from,
-                            MONEY_TRANSFER, 0, sendback_amt);
-    }
-  } else if (msg->type == MARKER) {
+    
+  if (msg->type == MARKER) {
     // TODO: record this process's state
+    printf("received marker\n");
     int snapshot_id;
     read(fd, &snapshot_id, sizeof(snapshot_id));
     int i;
@@ -327,11 +300,37 @@ void process_receive_message(process_t *p, int fd, int from) {
       }
     }
   } else {
-    fprintf(stderr, "Undefined message type id %d\n", msg->type);
-  }
+    if (read(fd, &msg->response_requested, sizeof(msg->response_requested)) != sizeof(msg->response_requested)) {
+      perror("read error");
+      return;
+    }
+    if (msg->type == MONEY_TRANSFER) {
+      read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+      p->money += msg->transfer_amt;
+      if (msg->response_requested) {
+        int sendback_amt = msg->transfer_amt / exchange_rate;
+        // need to send back widgets, received money
+        printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from);
+        process_send_currency(p, channels[p->id][msg->from][0], msg->from,
+                              WIDGET_TRANSFER, 0, sendback_amt);
+      }
+    } else if (msg->type == WIDGET_TRANSFER) {
+      read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
+      p->widgets += msg->transfer_amt;
+      if (msg->response_requested) {
+        int sendback_amt = msg->transfer_amt * exchange_rate;
+        // need to send back money, received widgets
+        printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
+        process_send_currency(p, channels[p->id][msg->from][0], msg->from,
+                              MONEY_TRANSFER, 0, sendback_amt);
+      } 
+    } else {
+      fprintf(stderr, "Undefined message type id %d from process %d\n", msg->type, from);
+    }
+  }     
   process_store_message(p, msg);
 }
-
+        
 // Will only every be called with p being process 0
 void initiate_snapshot(process_t *p) {
   int snapshot_id = p->snapshot_count++;
