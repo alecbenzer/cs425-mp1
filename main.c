@@ -109,6 +109,7 @@ typedef struct {
   struct timespec real_timestamp;
   int from;
   int to;
+
   // data specific to the type of message
   int transfer_amt;
   int response_requested;
@@ -153,7 +154,7 @@ void process_init(process_t *p, int id) {
   p->recording = malloc(sizeof(int *) * num_processes);
   int i;
   for (i = 0; i < num_processes; ++i) {
-    p->recording = malloc(sizeof(int) * num_snapshots);
+    p->recording[i] = malloc(sizeof(int) * num_snapshots);
   }
 }
 
@@ -197,7 +198,7 @@ void read_message_header(message_t *msg, process_t *p, int fd) {
   int lamport_timestamp;
   read(fd, &lamport_timestamp, sizeof(lamport_timestamp));
   msg->lamport_timestamp =
-      max(send_lamport_timestamp, p->next_lamport_timestamp) + 1;
+      max(lamport_timestamp, p->next_lamport_timestamp) + 1;
   p->next_lamport_timestamp = msg->lamport_timestamp + 1;
 
   msg->vector_timestamp = (int *)malloc(num_processes * sizeof(int));
@@ -224,8 +225,10 @@ void read_message_header(message_t *msg, process_t *p, int fd) {
   msg->vector_timestamp[p->id] = p->next_vector_timestamp[p->id];
   p->next_vector_timestamp = msg->vector_timestamp;
 
-  read(fd, &msg->type, sizeof(msg->type));
-
+  if (read(fd, &msg->type, sizeof(msg->type)) != sizeof(msg->type)) {
+    perror("read error");
+    return;   
+  }
   get_time(&msg->real_timestamp);
 }
 
@@ -238,8 +241,9 @@ void process_send_currency(process_t *p, int fd, int to, int type,
                            int response_requested, int amt) {
   message_t *msg = malloc(sizeof(message_t));
   message_init(msg, p);
-
+        
   bool amt_defined = (amt != -1);
+  
   if (type) {
     msg->type = MONEY_TRANSFER;
     // check whether an amount is specified
@@ -250,16 +254,18 @@ void process_send_currency(process_t *p, int fd, int to, int type,
     p->money -= msg->transfer_amt;
     printf("Sent %i dollars from process %i to process %i\n", msg->transfer_amt,
            p->id, to);
-  } else {
+  } else { 
     msg->type = WIDGET_TRANSFER;
     if (!amt_defined)
       msg->transfer_amt = randint(21);
     else
-      msg->transfer_amt = amt;
-    p->widgets -= msg->transfer_amt;
+      msg->transfer_amt = amt; 
+    p->widgets -= msg->transfer_amt; 
     printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt,
            p->id, to);
+    
   }
+
   msg->response_requested = response_requested;
   msg->from = p->id;
   msg->to = to;
@@ -273,8 +279,8 @@ void process_send_currency(process_t *p, int fd, int to, int type,
 
 void process_receive_message(process_t *p, int fd, int from) {
   message_t *msg = malloc(sizeof(message_t));
+  
   read_message_header(msg, p, fd);
-
   msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
@@ -288,7 +294,7 @@ void process_receive_message(process_t *p, int fd, int from) {
   if (msg->type == MONEY_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->money += msg->transfer_amt;
-    if (response_requested) {
+    if (msg->response_requested) {
       int sendback_amt = msg->transfer_amt / exchange_rate;
       // need to send back widgets, received money
       printf("Sent back %i widgets to process %i\n", sendback_amt, msg->from);
@@ -298,7 +304,7 @@ void process_receive_message(process_t *p, int fd, int from) {
   } else if (msg->type == WIDGET_TRANSFER) {
     read(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
     p->widgets += msg->transfer_amt;
-    if (response_requested) {
+    if (msg->response_requested) {
       int sendback_amt = msg->transfer_amt * exchange_rate;
       // need to send back money, received widgets
       printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
@@ -343,7 +349,7 @@ void initiate_snapshot(process_t *p) {
     msg->snapshot_id = snapshot_id;
 
     send_message_header(msg, channels[p->id][i][0]);
-    write(fd, &msg->snapshot_id, sizeof(msg->snapshot_id))
+    write(channels[p->id][i][0], &msg->snapshot_id, sizeof(msg->snapshot_id));
   }
 }
 
@@ -396,7 +402,7 @@ void process_run(process_t *p) {
   }
 
   while (1) {
-    if (randint(5)) {
+    if (randint(5)) { 
       poll(read_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (read_fds[i].revents & POLLIN) {
@@ -404,19 +410,21 @@ void process_run(process_t *p) {
         }
       }
     } else {
-      poll(write_fds, num_processes, 300);
+      poll(write_fds, num_processes, 300); 
       for (i = 0; i < num_processes; ++i) {
         if (write_fds[i].revents & POLLOUT) {
           // randomly generate what type of currency we want to send (widgets or
           // money)
           int currency = randint(2);
           if (currency) {
-            process_send_currency(p, write_fds[i].fd, i, MONEY_TRANSFER, SEND,
+            process_send_currency(p, write_fds[i].fd, i, MONEY_TRANSFER, 1,
                                   -1);
+
             // printf("Sent money from process %i to process %i\n", p->id, i);
-          } else {
-            process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, SEND,
+          } else { 
+             process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, 1,
                                   -1);
+            
             // printf("Sent widgets from process %i to process %i\n", p->id, i);
           }
         }
