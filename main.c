@@ -39,13 +39,13 @@ int max(int a, int b) { return a > b ? a : b; }
 
 void print_vector_timestamp(FILE *f, int *timestamp) {
   int i;
-  fprintf(f, "[");
+  //fprintf(f, "[");
   for (i = 0; i < num_processes; i++) {
     fprintf(f, "%i", timestamp[i]);
     if (i != num_processes - 1)
-      fprintf(f, ",");
+      fprintf(f, " ");
   }
-  fprintf(f, "]");
+  //fprintf(f, "]");
 }
 
 // Returns a random int in {0,...,n-1}
@@ -194,19 +194,18 @@ void process_store_message(process_t *p, message_t *msg) {
   int snapshot_id;
   for (snapshot_id = 0; snapshot_id < num_snapshots; ++snapshot_id) {
     if (p->recording[msg->from][snapshot_id]) {
-      // TODO: print message to appropriate snapshot file
-      fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
-              p->next_lamport_timestamp);
-      print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
-      if (msg->type == MONEY_TRANSFER)
-        fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from,
-                msg->transfer_amt);
-      else if (msg->type == WIDGET_TRANSFER)
-        fprintf(p->snapshot_file, " : from %d : widgets %d\n", msg->from,
-                msg->transfer_amt);
-      else
-        fprintf(p->snapshot_file, "\n");
-      fflush(p->snapshot_file);
+      if (msg->type != MARKER) {
+        fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+        fprintf(p->snapshot_file, "vector ");
+        print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
+        if (msg->type == MONEY_TRANSFER)
+          fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from,
+                  msg->transfer_amt);
+        else if (msg->type == WIDGET_TRANSFER)
+          fprintf(p->snapshot_file, " : from %d : widgets %d\n", msg->from,
+                  msg->transfer_amt);
+        fflush(p->snapshot_file);
+      }
     }
   }
 }
@@ -324,8 +323,8 @@ void send_markers(process_t *p, int snapshot_id) {
 }
 
 void record_process_state(process_t *p, int snapshot_id) {
-  fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
-          p->next_lamport_timestamp);
+  fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+  fprintf(p->snapshot_file, "vector ");
   print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
   fprintf(p->snapshot_file, " : money %d widgets %d\n", p->money, p->widgets);
   fflush(p->snapshot_file);
@@ -401,6 +400,7 @@ void initiate_snapshot(process_t *p) {
   int snapshot_id = p->snapshot_count++;
   record_process_state(p, snapshot_id);
   send_markers(p, snapshot_id);
+  p->received_marker[snapshot_id] = 1;
   // turn on recording on all channels
   int i;
   for (i = 0; i < num_processes; ++i) {
