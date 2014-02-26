@@ -5,9 +5,9 @@ from collections import defaultdict, namedtuple
 
 import vector_timestamp
 
-Status = namedtuple('Status', ['process', 'logical', 'vector', 'money', 'widgets'])
-WidgetMessage = namedtuple('WidgetMessage', ['logical', 'vector', 'from_id', 'to_id', 'widgets'])
-MoneyMessage = namedtuple('MoneyMessage', ['logical', 'vector', 'from_id', 'to_id', 'money'])
+Status = namedtuple('Status', ['snapshot', 'process', 'logical', 'vector', 'money', 'widgets'])
+WidgetMessage = namedtuple('WidgetMessage', ['snapshot', 'logical', 'vector', 'from_id', 'to_id', 'widgets'])
+MoneyMessage = namedtuple('MoneyMessage', ['snapshot', 'logical', 'vector', 'from_id', 'to_id', 'money'])
 
 def parse_line(line, pid):
     fields = [s.strip() for s in line.split(':')]
@@ -36,7 +36,7 @@ def parse_line(line, pid):
         money = int(vars_field[1])
         widgets = int(vars_field[3])
 
-        return Status(pid, logical, vector, money, widgets)
+        return Status(snapshot, pid, logical, vector, money, widgets)
     elif len(fields) == 5:  # it's a message
         from_field = fields[3].strip().split()
         assert len(from_field) == 2
@@ -47,10 +47,10 @@ def parse_line(line, pid):
         assert len(message_field) == 2
         if message_field[0] == 'widgets':
             widgets = int(message_field[1])
-            return WidgetMessage(logical, vector, from_id, pid, widgets)
+            return WidgetMessage(snapshot, logical, vector, from_id, pid, widgets)
         elif message_field[0] == 'money':
             money = int(message_field[1])
-            return MoneyMessage(logical, vector, from_id, pid, money)
+            return MoneyMessage(snapshot, logical, vector, from_id, pid, money)
         else:
             raise "Parse error"
     else:
@@ -70,7 +70,8 @@ def main():
         pid = int(p.match(fn).group(1))
         with open(fn, 'r') as f:
             for line in f:
-                snapshots[pid].append(parse_line(line, pid))
+                m = parse_line(line, pid)
+                snapshots[m.snapshot].append(m)
 
     for snapshot in snapshots.values():
         check_invariants(snapshot)
