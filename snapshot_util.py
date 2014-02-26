@@ -23,6 +23,7 @@ def parse_line(line, pid):
     logical = int(logical_field[1])
 
     vector_field = fields[2].strip().split()
+    print vector_field
     assert vector_field[0] == 'vector'
     vector = [int(t) for t in vector_field[1:]]
 
@@ -48,6 +49,8 @@ def parse_line(line, pid):
             return MoneyMessage(logical, vector, from_id, pid, money)
         else:
             raise "Parse error"
+    else:
+        raise "Parse error"
 
 def main():
     p = re.compile("^snapshot.(\\d)+$")
@@ -58,7 +61,7 @@ def main():
         pid = int(p.match(fn).group(1))
         with open(fn, 'r') as f:
             for line in f:
-                print parse_line(line)
+                print parse_line(line, pid)
 
 if __name__ == '__main__':
     main()

@@ -1,4 +1,5 @@
 *.swp
 bin/
 log.*
+snapshot.*
 *.pyc
