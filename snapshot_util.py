@@ -5,15 +5,39 @@ from collections import defaultdict, namedtuple
 
 import vector_timestamp
 
-Status = namedtuple('Status', ['snapshot', 'process', 'logical', 'vector', 'money', 'widgets'])
-WidgetMessage = namedtuple('WidgetMessage', ['snapshot', 'logical', 'vector', 'from_id', 'to_id', 'widgets'])
-MoneyMessage = namedtuple('MoneyMessage', ['snapshot', 'logical', 'vector', 'from_id', 'to_id', 'money'])
+Status = namedtuple(
+    'Status',
+    ['snapshot',
+     'process',
+     'logical',
+     'vector',
+     'money',
+     'widgets'])
+
+WidgetMessage = namedtuple(
+    'WidgetMessage',
+    ['snapshot',
+     'logical',
+     'vector',
+     'from_id',
+     'to_id',
+     'widgets'])
+
+MoneyMessage = namedtuple(
+    'MoneyMessage',
+    ['snapshot',
+     'logical',
+     'vector',
+     'from_id',
+     'to_id',
+     'money'])
+
 
 def parse_line(line, pid):
     fields = [s.strip() for s in line.split(':')]
     assert len(fields) >= 4
 
-    snapshot_field = fields[0].strip().split() 
+    snapshot_field = fields[0].strip().split()
     assert len(snapshot_field) == 2
     assert snapshot_field[0] == 'snapshot'
     snapshot = int(snapshot_field[1])
@@ -47,7 +71,9 @@ def parse_line(line, pid):
         assert len(message_field) == 2
         if message_field[0] == 'widgets':
             widgets = int(message_field[1])
-            return WidgetMessage(snapshot, logical, vector, from_id, pid, widgets)
+            return (
+                WidgetMessage(snapshot, logical, vector, from_id, pid, widgets)
+            )
         elif message_field[0] == 'money':
             money = int(message_field[1])
             return MoneyMessage(snapshot, logical, vector, from_id, pid, money)
@@ -56,16 +82,19 @@ def parse_line(line, pid):
     else:
         raise "Parse error"
 
+
 def check_invariants(snapshot):
     money = sum(m.money for m in snapshot if hasattr(m, 'money'))
     widgets = sum(m.widgets for m in snapshot if hasattr(m, 'widgets'))
-    print money, widgets
+    print "money: %d, widgets: %d" % (money, widgets)
+
 
 def main():
     p = re.compile("^snapshot.(\\d)+$")
     filenames = [fn for fn in os.listdir('.') if p.match(fn)]
 
-    snapshots = defaultdict(list)  # a dictionary of snapshot ids to lists of events
+    # a dictionary of snapshot ids to lists of events
+    snapshots = defaultdict(list)
     for fn in filenames:
         pid = int(p.match(fn).group(1))
         with open(fn, 'r') as f:
@@ -73,9 +102,9 @@ def main():
                 m = parse_line(line, pid)
                 snapshots[m.snapshot].append(m)
 
-    for snapshot in snapshots.values():
+    for k, snapshot in snapshots.iteritems():
+        print "Checking snapshot %d" % k
         check_invariants(snapshot)
 
 if __name__ == '__main__':
     main()
-
