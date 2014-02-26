@@ -29,7 +29,7 @@ void get_time(struct timespec *ts) {
   mach_port_deallocate(mach_task_self(), cclock);
   ts->tv_sec = mts.tv_sec;
   ts->tv_nsec = mts.tv_nsec;
-  
+
 #else
   clock_gettime(CLOCK_REALTIME, ts);
 #endif
@@ -126,11 +126,12 @@ typedef struct {
   message_t **message_log;
   FILE *log_file;
   FILE *snapshot_file;
-  
+
   // used only by process 0
   int snapshot_count;
- 
-  // received_marker[i] indicates that on snapshot i, the process has already received a marker 
+
+  // received_marker[i] indicates that on snapshot i, the process has already
+  // received a marker
   int *received_marker;
   // recording[i][j] indicates whether we're recoding incoming channel i for
   // snapshot j
@@ -139,7 +140,7 @@ typedef struct {
 
 bool marker_received(process_t *p, int snapshot_num) {
   return p->received_marker[snapshot_num];
-} 
+}
 
 void process_init(process_t *p, int id) {
   p->id = id;
@@ -152,7 +153,7 @@ void process_init(process_t *p, int id) {
 
   char snapshot_file_name[1024];
   snprintf(snapshot_file_name, sizeof(snapshot_file_name), "snapshot.%d", id);
-  p->snapshot_file = fopen(snapshot_file_name , "w"); 
+  p->snapshot_file = fopen(snapshot_file_name, "w");
 
   char log_file_name[1024];
   snprintf(log_file_name, sizeof(log_file_name), "log.%d", id);
@@ -160,10 +161,10 @@ void process_init(process_t *p, int id) {
   fprintf(p->log_file, "# from lamport vector real\n");
 
   p->snapshot_count = 0;
-  
-  p->received_marker = (int *) malloc(sizeof(int) * num_snapshots);
+
+  p->received_marker = (int *)malloc(sizeof(int) * num_snapshots);
   int j;
-  for (j=0; j < num_snapshots; ++j) {
+  for (j = 0; j < num_snapshots; ++j) {
     p->received_marker[j] = 0;
   }
 
@@ -172,7 +173,7 @@ void process_init(process_t *p, int id) {
   for (i = 0; i < num_processes; ++i) {
     p->recording[i] = malloc(sizeof(int) * num_snapshots);
     int k;
-    for (k=0;k < num_snapshots; ++k) {
+    for (k = 0; k < num_snapshots; ++k) {
       p->recording[i][k] = 0;
     }
   }
@@ -194,12 +195,15 @@ void process_store_message(process_t *p, message_t *msg) {
   for (snapshot_id = 0; snapshot_id < num_snapshots; ++snapshot_id) {
     if (p->recording[msg->from][snapshot_id]) {
       // TODO: print message to appropriate snapshot file
-      fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+      fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
+              p->next_lamport_timestamp);
       print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
       if (msg->type == MONEY_TRANSFER)
-        fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from, msg->transfer_amt);
-      else if (msg->type == WIDGET_TRANSFER) 
-        fprintf(p->snapshot_file, " : from %d : widgets %d\n", msg->from, msg->transfer_amt);
+        fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from,
+                msg->transfer_amt);
+      else if (msg->type == WIDGET_TRANSFER)
+        fprintf(p->snapshot_file, " : from %d : widgets %d\n", msg->from,
+                msg->transfer_amt);
       else
         fprintf(p->snapshot_file, "\n");
       fflush(p->snapshot_file);
@@ -254,13 +258,14 @@ void read_message_header(message_t *msg, process_t *p, int fd) {
 
   if (read(fd, &msg->type, sizeof(msg->type)) != sizeof(msg->type)) {
     perror("read error");
-    return;   
+    return;
   }
   get_time(&msg->real_timestamp);
 }
 
 /*
- * response_requested indicates whether the currency is being sent in response to a transaction
+ * response_requested indicates whether the currency is being sent in response
+ * to a transaction
  * or to initiate it amt is the amount of currency you want to send. if set to
  * -1, a random currency is sent, o/w the specified amt is sent
  */
@@ -268,9 +273,9 @@ void process_send_currency(process_t *p, int fd, int to, int type,
                            int response_requested, int amt) {
   message_t *msg = malloc(sizeof(message_t));
   message_init(msg, p);
-        
+
   bool amt_defined = (amt != -1);
-  
+
   if (type) {
     msg->type = MONEY_TRANSFER;
     // check whether an amount is specified
@@ -281,16 +286,15 @@ void process_send_currency(process_t *p, int fd, int to, int type,
     p->money -= msg->transfer_amt;
     printf("Sent %i dollars from process %i to process %i\n", msg->transfer_amt,
            p->id, to);
-  } else { 
+  } else {
     msg->type = WIDGET_TRANSFER;
     if (!amt_defined)
       msg->transfer_amt = randint(21);
     else
-      msg->transfer_amt = amt; 
-    p->widgets -= msg->transfer_amt; 
+      msg->transfer_amt = amt;
+    p->widgets -= msg->transfer_amt;
     printf("Sent %i widgets from process %i to process %i\n", msg->transfer_amt,
            p->id, to);
-    
   }
 
   msg->response_requested = response_requested;
@@ -306,7 +310,7 @@ void process_send_currency(process_t *p, int fd, int to, int type,
 
 void send_markers(process_t *p, int snapshot_id) {
   int i;
-  for (i=0; i<num_processes; ++i) {
+  for (i = 0; i < num_processes; ++i) {
     if (i == p->id) {
       continue;
     }
@@ -320,45 +324,47 @@ void send_markers(process_t *p, int snapshot_id) {
 }
 
 void record_process_state(process_t *p, int snapshot_id) {
-  fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+  fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
+          p->next_lamport_timestamp);
   print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
-  fprintf(p->snapshot_file," : money %d widgets %d\n", p->money, p->widgets); 
+  fprintf(p->snapshot_file, " : money %d widgets %d\n", p->money, p->widgets);
   fflush(p->snapshot_file);
 }
 
 void process_receive_message(process_t *p, int fd, int from) {
   message_t *msg = malloc(sizeof(message_t));
-  
+
   read_message_header(msg, p, fd);
   msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
-    
+
   if (msg->type == MARKER) {
     int snapshot_id;
     read(fd, &snapshot_id, sizeof(snapshot_id));
     if (!marker_received(p, snapshot_id)) {
-      //record state of process
+      // record state of process
       record_process_state(p, snapshot_id);
       p->received_marker[snapshot_id] = 1;
       int i;
-      //start recording on all channels
-      for (i = 0; i<num_processes; ++i) {
-        if (i==p->id) {
+      // start recording on all channels
+      for (i = 0; i < num_processes; ++i) {
+        if (i == p->id) {
           continue;
-        } 
+        }
         p->recording[i][snapshot_id] = 1;
       }
-      //send out markers to all other processes
-      send_markers(p, snapshot_id); 
+      // send out markers to all other processes
+      send_markers(p, snapshot_id);
     } else {
-      //stop recording on the channel
+      // stop recording on the channel
       p->recording[from][snapshot_id] = 0;
     }
     printf("received marker with snapshot id %i\n", snapshot_id);
- 
+
   } else {
-    if (read(fd, &msg->response_requested, sizeof(msg->response_requested)) != sizeof(msg->response_requested)) {
+    if (read(fd, &msg->response_requested, sizeof(msg->response_requested)) !=
+        sizeof(msg->response_requested)) {
       perror("read error");
       return;
     }
@@ -381,28 +387,28 @@ void process_receive_message(process_t *p, int fd, int from) {
         printf("Sent back %i dollars to process %i\n", sendback_amt, msg->from);
         process_send_currency(p, channels[p->id][msg->from][0], msg->from,
                               MONEY_TRANSFER, 0, sendback_amt);
-      } 
+      }
     } else {
-      fprintf(stderr, "Undefined message type id %d from process %d\n", msg->type, from);
+      fprintf(stderr, "Undefined message type id %d from process %d\n",
+              msg->type, from);
     }
-  }     
+  }
   process_store_message(p, msg);
 }
-        
+
 // Will only every be called with p being process 0
 void initiate_snapshot(process_t *p) {
   int snapshot_id = p->snapshot_count++;
-  record_process_state(p, snapshot_id); 
-  send_markers(p, snapshot_id); 
-  //turn on recording on all channels
+  record_process_state(p, snapshot_id);
+  send_markers(p, snapshot_id);
+  // turn on recording on all channels
   int i;
-  for (i = 0; i<num_processes; ++i) {
-    if (i==p->id) {
+  for (i = 0; i < num_processes; ++i) {
+    if (i == p->id) {
       continue;
-    } 
+    }
     p->recording[i][snapshot_id] = 1;
   }
-
 }
 
 void process_run(process_t *p) {
@@ -454,7 +460,7 @@ void process_run(process_t *p) {
   }
 
   while (1) {
-    if (randint(5)) { 
+    if (randint(5)) {
       poll(read_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (read_fds[i].revents & POLLIN) {
@@ -462,21 +468,20 @@ void process_run(process_t *p) {
         }
       }
     } else {
-      poll(write_fds, num_processes, 300); 
+      poll(write_fds, num_processes, 300);
       for (i = 0; i < num_processes; ++i) {
         if (write_fds[i].revents & POLLOUT) {
           // randomly generate what type of currency we want to send (widgets or
           // money)
           int currency = randint(2);
           if (currency) {
-            process_send_currency(p, write_fds[i].fd, i, MONEY_TRANSFER, 1,
-                                  -1);
+            process_send_currency(p, write_fds[i].fd, i, MONEY_TRANSFER, 1, -1);
 
             // printf("Sent money from process %i to process %i\n", p->id, i);
-          } else { 
-             process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, 1,
+          } else {
+            process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, 1,
                                   -1);
-            
+
             // printf("Sent widgets from process %i to process %i\n", p->id, i);
           }
         }
