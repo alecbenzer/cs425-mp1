@@ -39,13 +39,13 @@ int max(int a, int b) { return a > b ? a : b; }
 
 void print_vector_timestamp(FILE *f, int *timestamp) {
   int i;
-  //fprintf(f, "[");
+  // fprintf(f, "[");
   for (i = 0; i < num_processes; i++) {
     fprintf(f, "%i", timestamp[i]);
     if (i != num_processes - 1)
       fprintf(f, " ");
   }
-  //fprintf(f, "]");
+  // fprintf(f, "]");
 }
 
 // Returns a random int in {0,...,n-1}
@@ -195,7 +195,8 @@ void process_store_message(process_t *p, message_t *msg) {
   for (snapshot_id = 0; snapshot_id < num_snapshots; ++snapshot_id) {
     if (p->recording[msg->from][snapshot_id]) {
       if (msg->type != MARKER) {
-        fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+        fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
+                p->next_lamport_timestamp);
         fprintf(p->snapshot_file, "vector ");
         print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
         if (msg->type == MONEY_TRANSFER)
@@ -323,7 +324,8 @@ void send_markers(process_t *p, int snapshot_id) {
 }
 
 void record_process_state(process_t *p, int snapshot_id) {
-  fprintf(p->snapshot_file,"snapshot %d : logical %d : ", snapshot_id, p->next_lamport_timestamp);
+  fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
+          p->next_lamport_timestamp);
   fprintf(p->snapshot_file, "vector ");
   print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
   fprintf(p->snapshot_file, " : money %d widgets %d\n", p->money, p->widgets);
