@@ -400,6 +400,7 @@ void initiate_snapshot(process_t *p) {
   int snapshot_id = p->snapshot_count++;
   record_process_state(p, snapshot_id);
   send_markers(p, snapshot_id);
+  p->received_marker[snapshot_id] = 1;
   // turn on recording on all channels
   int i;
   for (i = 0; i < num_processes; ++i) {
