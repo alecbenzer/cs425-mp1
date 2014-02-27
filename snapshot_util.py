@@ -86,7 +86,7 @@ def parse_line(line, pid):
 def check_invariants(snapshot):
     money = sum(m.money for m in snapshot if hasattr(m, 'money'))
     widgets = sum(m.widgets for m in snapshot if hasattr(m, 'widgets'))
-    print "money: %d, widgets: %d" % (money, widgets)
+    print "\tmoney: %d, widgets: %d" % (money, widgets)
 
 
 def main():
