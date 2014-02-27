@@ -350,10 +350,11 @@ void process_receive_message(process_t *p, int fd, int from) {
       int i;
       // start recording on all channels
       for (i = 0; i < num_processes; ++i) {
-        if (i == p->id) {
+        if (i == p->id || i == from) {
           continue;
         }
-        p->recording[i][snapshot_id] = 1;
+        if (!p->recording[i][snapshot_id])
+          p->recording[i][snapshot_id] = 1;
       }
       // send out markers to all other processes
       send_markers(p, snapshot_id);
