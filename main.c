@@ -37,15 +37,24 @@ void get_time(struct timespec *ts) {
 
 int max(int a, int b) { return a > b ? a : b; }
 
-void print_vector_timestamp(FILE *f, int *timestamp) {
+void print_vector_timestamp_spaced(FILE *f, int *timestamp) {
   int i;
-  // fprintf(f, "[");
   for (i = 0; i < num_processes; i++) {
     fprintf(f, "%i", timestamp[i]);
     if (i != num_processes - 1)
       fprintf(f, " ");
   }
-  // fprintf(f, "]");
+}
+
+void print_vector_timestamp_brackets(FILE *f, int *timestamp) {
+  int i;
+  fprintf(f, "[");
+  for (i = 0; i < num_processes; i++) {
+    fprintf(f, "%i", timestamp[i]);
+    if (i != num_processes - 1)
+      fprintf(f, ",");
+  }
+  fprintf(f, "]");
 }
 
 // Returns a random int in {0,...,n-1}
@@ -183,8 +192,8 @@ void process_store_message(process_t *p, message_t *msg) {
   p->message_log =
       realloc(p->message_log, sizeof(message_t *) * ++p->message_log_size);
   p->message_log[p->message_log_size - 1] = msg;
-  fprintf(p->log_file, "%i %d ", msg->from, msg->lamport_timestamp);
-  print_vector_timestamp(p->log_file, msg->vector_timestamp);
+  fprintf(p->log_file, "%d %d ", msg->from, msg->lamport_timestamp);
+  print_vector_timestamp_brackets(p->log_file, msg->vector_timestamp);
   fprintf(p->log_file, " %lld.%.9ld\n", (long long)msg->real_timestamp.tv_sec,
           msg->real_timestamp.tv_nsec);
   fflush(p->log_file);
@@ -198,7 +207,7 @@ void process_store_message(process_t *p, message_t *msg) {
         fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
                 p->next_lamport_timestamp);
         fprintf(p->snapshot_file, "vector ");
-        print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
+        print_vector_timestamp_spaced(p->snapshot_file, p->next_vector_timestamp);
         if (msg->type == MONEY_TRANSFER)
           fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from,
                   msg->transfer_amt);
@@ -274,6 +283,12 @@ void process_send_currency(process_t *p, int fd, int to, int type,
   message_t *msg = malloc(sizeof(message_t));
   message_init(msg, p);
 
+  msg->from = p->id;
+  msg->to = to;
+  msg->response_requested = response_requested;
+
+  process_store_message(p, msg);
+
   bool amt_defined = (amt != -1);
 
   if (type) {
@@ -297,15 +312,9 @@ void process_send_currency(process_t *p, int fd, int to, int type,
            p->id, to);
   }
 
-  msg->response_requested = response_requested;
-  msg->from = p->id;
-  msg->to = to;
-
   send_message_header(msg, fd);
   write(fd, &msg->response_requested, sizeof(msg->response_requested));
   write(fd, &msg->transfer_amt, sizeof(msg->transfer_amt));
-
-  process_store_message(p, msg);
 }
 
 void send_markers(process_t *p, int snapshot_id) {
@@ -327,7 +336,7 @@ void record_process_state(process_t *p, int snapshot_id) {
   fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
           p->next_lamport_timestamp);
   fprintf(p->snapshot_file, "vector ");
-  print_vector_timestamp(p->snapshot_file, p->next_vector_timestamp);
+  print_vector_timestamp_spaced(p->snapshot_file, p->next_vector_timestamp);
   fprintf(p->snapshot_file, " : money %d widgets %d\n", p->money, p->widgets);
   fflush(p->snapshot_file);
 }
@@ -339,6 +348,8 @@ void process_receive_message(process_t *p, int fd, int from) {
   msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
+
+  process_store_message(p, msg);
 
   if (msg->type == MARKER) {
     int snapshot_id;
@@ -395,7 +406,6 @@ void process_receive_message(process_t *p, int fd, int from) {
               msg->type, from);
     }
   }
-  process_store_message(p, msg);
 }
 
 // Will only every be called with p being process 0
