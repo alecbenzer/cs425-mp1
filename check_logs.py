@@ -5,7 +5,7 @@ import numpy as np
 from collections import namedtuple
 from itertools import product
 
-import vector_timestamp
+from mp1_lib import *
 
 Message = namedtuple(
     'Message',
@@ -44,12 +44,12 @@ for fn in filenames:
 # Check that each process's timestamps are monotonic
 for msgs in messages_by_process.values():
     for i in range(len(msgs) - 1):
-        if msgs[i].real > msgs[i + 1].real:
-            print "ERROR"
-        if msgs[i].lamport > msgs[i + 1].lamport:
-            print "ERROR"
-        if not (msgs[i].vector <= msgs[i + 1].vector):
-            print "%r should be <= %r" % (msgs[i].vector, msgs[i + 1].vector)
+        if msgs[i].real > msgs[i+1].real:
+            print "%r should be <= %r" % (msgs[i].real, msgs[i+1].real)
+        if msgs[i].lamport > msgs[i+1].lamport:
+            print "%r should be <= %r" % (msgs[i].lamport, msgs[i+1].lamport)
+        if not (msgs[i].vector <= msgs[i+1].vector):
+            print "%r should be <= %r" % (msgs[i].vector, msgs[i+1].vector)
 
 # Slow O(n^2) loop, but simpler than trying to do a partial sort or
 # something like that
