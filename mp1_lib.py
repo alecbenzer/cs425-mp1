@@ -2,6 +2,7 @@ import re
 import os
 from collections import namedtuple, defaultdict
 
+
 class VectorTimestamp(list):
 
     def __eq__(a, b):
@@ -98,6 +99,7 @@ def parse_line(line, pid):
             raise "Parse error"
     else:
         raise "Parse error"
+
 
 def read_snapshots():
     p = re.compile("^snapshot.(\\d)+$")

@@ -206,7 +206,8 @@ void process_store_message(process_t *p, message_t *msg) {
         fprintf(p->snapshot_file, "snapshot %d : logical %d : ", snapshot_id,
                 p->next_lamport_timestamp);
         fprintf(p->snapshot_file, "vector ");
-        print_vector_timestamp_spaced(p->snapshot_file, p->next_vector_timestamp);
+        print_vector_timestamp_spaced(p->snapshot_file,
+                                      p->next_vector_timestamp);
         if (msg->type == MONEY_TRANSFER)
           fprintf(p->snapshot_file, " : from %d : money %d\n", msg->from,
                   msg->transfer_amt);
@@ -336,7 +337,7 @@ void record_process_state(process_t *p, int snapshot_id) {
   fflush(p->snapshot_file);
 }
 
-bool done_with_snapshot(process_t* p, int snapshot_id) {
+bool done_with_snapshot(process_t *p, int snapshot_id) {
   int i, j;
   for (i = 0; i < num_processes; ++i) {
     if (p->recording[i][snapshot_id] == 1) {
@@ -353,7 +354,6 @@ void process_receive_message(process_t *p, int fd, int from) {
   msg->dir = RECV;
   msg->from = from;
   msg->to = p->id;
-
 
   if (msg->type == MARKER) {
     process_store_message(p, msg);
@@ -502,7 +502,6 @@ void process_run(process_t *p) {
           } else {
             process_send_currency(p, write_fds[i].fd, i, WIDGET_TRANSFER, 1,
                                   -1);
-
           }
         }
       }
@@ -522,6 +521,7 @@ void process_run(process_t *p) {
  * assigning.
  */
 int main(int argc, char **argv) {
+  system("rm log.* snapshot.*");
   parse_flags(argc, argv);
 
   int i, j; // loop indicies
@@ -557,8 +557,6 @@ int main(int argc, char **argv) {
 
   while (waitpid(-1, NULL, 0))
     ;
-
-  // TODO: free channels
 
   return 0;
 }

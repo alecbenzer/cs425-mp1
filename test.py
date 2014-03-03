@@ -12,6 +12,7 @@ Message = namedtuple(
      'vector',
      'real'])
 
+
 def read_message_logs():
     p = re.compile("^log.(\\d)+$")
     filenames = [fn for fn in os.listdir('.') if p.match(fn)]
@@ -31,8 +32,8 @@ def read_message_logs():
 
                 from_id = int(from_id)
                 lamport = int(lamport)
-                vector = VectorTimestamp([int(t)
-                                         for t in vector.strip('[]').split(',')])
+                vector = VectorTimestamp([
+                    int(t) for t in vector.strip('[]').split(',')])
                 real = np.datetime64(int(float(real) * 1e9), 'ns')
 
                 m = Message(from_id, to_id, lamport, vector, real)
@@ -40,10 +41,12 @@ def read_message_logs():
                 messages_by_process[to_id].append(m)
     return messages, messages_by_process
 
+
 def check_invariants(snapshot):
     money = sum(m.money for m in snapshot if hasattr(m, 'money'))
     widgets = sum(m.widgets for m in snapshot if hasattr(m, 'widgets'))
     print "\tmoney: %d, widgets: %d" % (money, widgets)
+
 
 def main():
     snapshots = read_snapshots()
@@ -64,7 +67,8 @@ def main():
             if msgs[i].lamport > msgs[i + 1].lamport:
                 print "ERROR"
             if not (msgs[i].vector <= msgs[i + 1].vector):
-                print "%r should be <= %r" % (msgs[i].vector, msgs[i + 1].vector)
+                print "%r should be <= %r" % (msgs[i].vector,
+                                              msgs[i + 1].vector)
 
     print "More message log testing (this may take some time)..."
     # Slow O(n^2) loop, but simpler than trying to do a partial sort or
@@ -73,14 +77,14 @@ def main():
         if m.vector <= n.vector:
             if not (m.real <= n.real):
                 print "%r <= %r but not (%r <= %r)" % (
-                        m.vector, n.vector, m.real, n.real)
+                    m.vector, n.vector, m.real, n.real)
                 if m.vector < n.vector:
                     if not (m.real < n.real):
                         print "%r < %r but not (%r < %r)" % (
-                                m.vector, n.vector, m.real, n.real)
+                            m.vector, n.vector, m.real, n.real)
                         if not (m.lamport < n.lamport):
                             print "%r < %r but not (%r < %r)" % (
-                                    m.vector, n.vector, m.lamport, n.lamport)
+                                m.vector, n.vector, m.lamport, n.lamport)
 
 if __name__ == '__main__':
     main()
