@@ -103,12 +103,12 @@ def parse_line(line, pid):
 
 def read_snapshots():
     p = re.compile("^snapshot.(\\d)+$")
-    filenames = [fn for fn in os.listdir('.') if p.match(fn)]
+    filenames = ['logs/%s' % fn for fn in os.listdir('logs') if p.match(fn)]
 
     # a dictionary of snapshot ids to lists of events
     snapshots = defaultdict(list)
     for fn in filenames:
-        pid = int(p.match(fn).group(1))
+        pid = int(p.match(os.path.basename(fn)).group(1))
         with open(fn, 'r') as f:
             for line in f:
                 m = parse_line(line, pid)

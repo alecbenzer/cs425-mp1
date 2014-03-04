@@ -161,11 +161,11 @@ void process_init(process_t *p, int id) {
   p->message_log = NULL;
 
   char snapshot_file_name[1024];
-  snprintf(snapshot_file_name, sizeof(snapshot_file_name), "snapshot.%d", id);
+  snprintf(snapshot_file_name, sizeof(snapshot_file_name), "logs/snapshot.%d", id);
   p->snapshot_file = fopen(snapshot_file_name, "w");
 
   char log_file_name[1024];
-  snprintf(log_file_name, sizeof(log_file_name), "log.%d", id);
+  snprintf(log_file_name, sizeof(log_file_name), "logs/log.%d", id);
   p->log_file = fopen(log_file_name, "w");
   fprintf(p->log_file, "# from lamport vector real\n");
 
@@ -521,7 +521,8 @@ void process_run(process_t *p) {
  * assigning.
  */
 int main(int argc, char **argv) {
-  system("rm log.* snapshot.*");
+  system("rm -rf logs/");
+  system("mkdir logs");
   parse_flags(argc, argv);
 
   int i, j; // loop indicies

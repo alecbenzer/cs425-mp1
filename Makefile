@@ -1,8 +1,8 @@
 all: bin/main
 
-bin/main: main.c
+bin/main: src/main.c
 	mkdir -p bin
-	$(CC) -D_GNU_SOURCE -o bin/main main.c
+	$(CC) -D_GNU_SOURCE -o bin/main src/main.c
 
 .PHONY: clean
 clean:

@@ -1,8 +1,9 @@
 #!/usr/bin/python
+import os
 import numpy as np
 from itertools import product
 
-from mp1_lib import *
+from lib import *
 
 Message = namedtuple(
     'Message',
@@ -15,13 +16,13 @@ Message = namedtuple(
 
 def read_message_logs():
     p = re.compile("^log.(\\d)+$")
-    filenames = [fn for fn in os.listdir('.') if p.match(fn)]
+    filenames = ['logs/%s' % fn for fn in os.listdir('logs') if p.match(fn)]
 
     messages = []
     messages_by_process = {}
 
     for fn in filenames:
-        to_id = int(p.match(fn).group(1))
+        to_id = int(p.match(os.path.basename(fn)).group(1))
         messages_by_process[to_id] = []
         with open(fn, 'r') as f:
             for line in f:

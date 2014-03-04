@@ -3,7 +3,7 @@ import pprint
 from collections import defaultdict, namedtuple
 from sys import argv, exit
 
-from mp1_lib import *
+from lib import *
 
 
 def print_snapshot(snapshot):
@@ -15,7 +15,6 @@ def print_snapshot(snapshot):
             s,
             MoneyMessage)]
 
-    print "Statuses:"
     for status in statuses:
         print "Process %d" % status.process
         print "\tLogical: %d" % status.logical
