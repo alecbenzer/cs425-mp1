@@ -549,6 +549,7 @@ int main(int argc, char **argv) {
   for (i = 0; i < num_processes; ++i) {
     if (fork() == 0) {
       process_t p;
+      printf("Launched process %d\n", i);
       process_init(&p, i);
       process_run(&p);
       exit(0);
